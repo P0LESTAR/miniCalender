@@ -1,0 +1,63 @@
+:root {
+  --bg-primary: rgba(25, 25, 35, 0.85);
+  --bg-secondary: rgba(35, 35, 50, 0.6);
+  --bg-hover: rgba(55, 55, 75, 0.5);
+  --text-primary: #e0e0e0;
+  --text-secondary: #888;
+  --accent: #4fc3f7;
+  --accent-dim: rgba(79, 195, 247, 0.15);
+  --border: rgba(255, 255, 255, 0.08);
+  --radius: 12px;
+
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--text-primary);
+  background-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+}
+
+button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
