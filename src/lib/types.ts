@@ -2,11 +2,18 @@ export interface CalendarEvent {
   id: string;
   title: string;
   description?: string;
-  startTime: string; // ISO 8601
-  endTime: string; // ISO 8601
+  startTime: string; // ISO 8601 or YYYY-MM-DD for all-day
+  endTime: string; // ISO 8601 or YYYY-MM-DD for all-day
   color?: string;
   isAllDay: boolean;
   source: 'google' | 'local';
+}
+
+export type EventPosition = 'single' | 'start' | 'middle' | 'end';
+
+export interface DayEvent {
+  event: CalendarEvent;
+  position: EventPosition;
 }
 
 export interface CalendarDay {
@@ -14,5 +21,5 @@ export interface CalendarDay {
   isCurrentMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
-  events: CalendarEvent[];
+  events: DayEvent[];
 }

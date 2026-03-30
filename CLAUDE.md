@@ -13,6 +13,7 @@ miniCalender — a desktop calendar widget that embeds into the Windows desktop 
 - **Desktop Integration**: Windows Progman/WorkerW embedding (desktop-level widget)
 - **Google Calendar**: Manual OAuth2 + REST API (no oauth2 crate — removed for compatibility)
 - **Token Storage**: `keyring` crate (Windows Credential Manager)
+- **OAuth Credentials**: Build-time env via `dotenvy` crate + `build.rs` + `env!()` macro. Credentials in `src-tauri/.env` (gitignored).
 
 ## Build
 
@@ -34,6 +35,8 @@ export INCLUDE="C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildToo
 
 Output: `src-tauri/target/release/mini-calender.exe`
 
+**Build gotcha**: If the exe is running, `npx tauri build` fails with "access denied". Run `taskkill //F //IM mini-calender.exe` first.
+
 ## Architecture
 
 ```
@@ -41,18 +44,19 @@ src/                          # Svelte 5 frontend
 ├── App.svelte                # Shell: TitleBar + Calendar + Settings
 ├── app.css                   # Global CSS variables (dark glassmorphism theme)
 ├── lib/
-│   ├── types.ts              # CalendarEvent, CalendarDay interfaces
+│   ├── types.ts              # CalendarEvent, CalendarDay, DayEvent, EventPosition
 │   ├── stores/
 │   │   └── calendar.svelte.ts  # Reactive store ($state/$derived runes)
 │   └── components/
-│       ├── TitleBar.svelte   # Custom titlebar with manual drag (SetWindowPos)
-│       ├── Calendar.svelte   # Month grid with inline event bars + EventModal
-│       ├── EventModal.svelte # Add/delete event dialog
+│       ├── TitleBar.svelte   # Custom titlebar with manual drag (SetWindowPos) + sync button
+│       ├── Calendar.svelte   # Month grid with unified event bars + EventModal
+│       ├── EventModal.svelte # Add/delete event dialog with date range picker + color palette
 │       └── Settings.svelte   # Settings panel (Google auth, opacity, size, theme)
 
 src-tauri/src/                # Rust backend
 ├── main.rs                   # Entry point
 ├── lib.rs                    # Tauri setup, tray, embed_in_desktop(), move_window/get_window_position commands
+├── build.rs                  # Loads .env at build time (dotenvy), exposes as compile-time env vars
 ├── google_calendar.rs        # OAuth2 flow, token management, Google Calendar CRUD (5 Tauri commands)
 └── state.rs                  # AppState with Mutex, 5-min event cache
 ```
@@ -60,9 +64,25 @@ src-tauri/src/                # Rust backend
 ## Key Design Decisions
 
 - **Window drag**: `startDragging()` doesn't work for WorkerW child windows. Uses Rust-side `SetWindowPos`/`GetWindowRect` via `move_window` and `get_window_position` Tauri commands.
-- **Desktop embedding**: Finds Progman → sends 0x052C → finds WorkerW behind SHELLDLL_DefView → `SetParent`. `WS_EX_TOOLWINDOW` prevents Show Desktop from hiding it.
-- **OAuth2**: Hand-rolled HTTP flow with PKCE (oauth2 crate removed due to v5 type complexity). Tokens stored in Windows Credential Manager via keyring. Refresh is automatic.
-- **Google Calendar API credentials**: Placeholder `CLIENT_ID`/`CLIENT_SECRET` in `google_calendar.rs` — must be replaced with real credentials from Google Cloud Console.
+- **Desktop embedding**: Finds Progman → sends 0x052C → finds WorkerW behind SHELLDLL_DefView → `SetParent`. `WS_EX_TOOLWINDOW` prevents Show Desktop from hiding it. Win+D still minimizes (accepted behavior).
+- **OAuth2**: Hand-rolled HTTP flow with PKCE (oauth2 crate removed due to v5 type complexity). Tokens stored in Windows Credential Manager via keyring. Refresh is automatic. Credentials loaded at compile time via `env!("GOOGLE_CLIENT_ID")` from `src-tauri/.env`.
+- **Google Calendar two-way sync**: `addEvent()` calls `create_event` Rust command when Google connected, `removeEvent()` calls `delete_event`. Manual sync button in TitleBar (no automatic polling — keeps app lightweight).
+- **Event color persistence**: User-selected colors stored in `localStorage` (`event-colors` key) as `{eventId: color}` map. Restored on app load and after Google sync, since Google API doesn't return custom hex colors.
+- **Multi-day events**: Google all-day events use exclusive end date (end = day after last day). Converted to inclusive for rendering. EventModal auto-sets multi-day events as all-day.
+
+## Calendar Rendering
+
+- **Unified event grid**: All events (multi-day spanning + single-day) share the same lane-based grid per week. No separate rows for different event types.
+- **Week-based layout**: Each week = date number row + unified event grid. Grid always renders (even with no events) so the entire day area is clickable for adding events.
+- **Lane allocation**: Greedy algorithm assigns lanes. Multi-day events get priority, then single-day. Max 3 visible lanes, overflow shown as "+N more".
+- **Spanning bars**: Multi-day events use CSS Grid `grid-column` spanning. `roundLeft`/`roundRight` flags control border-radius at event start/end vs. week continuation.
+
+## EventModal Features
+
+- Inline mini calendar for date range selection (click start → click end, with hover preview)
+- Multi-day selection auto-enables all-day mode, hides time inputs
+- 9-color palette (blue default, green, orange, red, purple, yellow, teal, pink, gray)
+- Delete mode shows event title with confirmation
 
 ## Svelte Conventions
 
@@ -70,7 +90,22 @@ src-tauri/src/                # Rust backend
 - Store is a class with runes in `.svelte.ts` file
 - Korean UI text throughout (일정, 설정, 추가, 삭제, etc.)
 
+## Data Flow
+
+- **Local events**: Saved to disk via `save_local_events` / `load_local_events` Tauri commands (JSON file in app data dir). Color included in JSON.
+- **Google events**: Fetched via `fetch_events` command (±1 month range). Colors preserved via localStorage color map since Google API doesn't store custom hex colors.
+- **On startup**: `load()` → load local events → restore colors from localStorage → check Google auth → fetch Google events if connected.
+
+## Known Limitations
+
+- Win+D (Show Desktop) minimizes the widget — accepted behavior, not blocked
+- Google Calendar disconnect command not yet implemented in Rust backend
+- Scenario B dialog (offer to upload local events when Google connects) not yet implemented
+- Debug `console.log` statements in `calendar.svelte.ts` should be removed before release
+- Google app verification needed for public distribution (1-4 week review)
+
 ## Future Plans
 
 - Mobile expansion via Tauri v2 Mobile or Capacitor (shared Svelte frontend)
 - Google Calendar is the sync layer — no separate backend server needed
+- 3-phase evolution: Tauri app → frontend separation → Shell Extension DLL

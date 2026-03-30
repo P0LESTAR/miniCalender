@@ -68,7 +68,11 @@ fn embed_in_desktop(window: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, FindWindowExW, FindWindowW, GetWindowLongPtrW, SendMessageTimeoutW,
-        SetParent, SetWindowLongPtrW, GWL_EXSTYLE, SMTO_NORMAL, WS_EX_TOOLWINDOW,
+        SetParent, SetWindowLongPtrW, SetWindowPos,
+        GWL_EXSTYLE, GWL_STYLE, SMTO_NORMAL,
+        WS_CHILD, WS_POPUP, WS_CAPTION, WS_THICKFRAME,
+        WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE,
+        HWND_TOP, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_FRAMECHANGED, SWP_NOACTIVATE,
     };
     use windows::core::{BOOL, PCWSTR};
 
@@ -100,12 +104,10 @@ fn embed_in_desktop(window: &tauri::WebviewWindow) {
             Some(&mut _result),
         );
 
-        // Step 3: Enumerate top-level windows to find the WorkerW that sits behind desktop icons.
-        // The correct WorkerW is the one found right after the window that contains SHELLDLL_DefView.
+        // Step 3: Enumerate top-level windows to find the WorkerW behind desktop icons
         use std::sync::Mutex;
         static WORKER_W: Mutex<Option<isize>> = Mutex::new(None);
 
-        // Reset before enumeration
         *WORKER_W.lock().unwrap() = None;
 
         unsafe extern "system" fn enum_callback(hwnd: HWND, _lparam: LPARAM) -> BOOL {
@@ -116,8 +118,6 @@ fn embed_in_desktop(window: &tauri::WebviewWindow) {
                 PCWSTR::null(),
             );
             if shell_view.is_ok() {
-                // Found the window containing SHELLDLL_DefView.
-                // The WorkerW we need is the next sibling after this hwnd.
                 let next_worker = FindWindowExW(
                     None,
                     Some(hwnd),
@@ -128,22 +128,47 @@ fn embed_in_desktop(window: &tauri::WebviewWindow) {
                     *WORKER_W.lock().unwrap() = Some(w.0 as isize);
                 }
             }
-            BOOL::from(true) // continue enumeration
+            BOOL::from(true)
         }
 
         let _ = EnumWindows(Some(enum_callback), LPARAM(0));
 
-        // Step 4: Set our Tauri window as a child of that WorkerW
+        // Step 4: Change styles FIRST, then SetParent, then apply with SWP_FRAMECHANGED
         let worker_w_value = WORKER_W.lock().unwrap().take();
         if let Some(worker_raw) = worker_w_value {
             let worker_hwnd = HWND(worker_raw as *mut std::ffi::c_void);
             let tauri_hwnd = HWND(raw_hwnd.0);
+
+            // 4a: Set WS_CHILD, remove WS_POPUP/WS_CAPTION/WS_THICKFRAME BEFORE SetParent
+            let style = GetWindowLongPtrW(tauri_hwnd, GWL_STYLE);
+            let new_style = (style
+                & !(WS_POPUP.0 as isize)
+                & !(WS_CAPTION.0 as isize)
+                & !(WS_THICKFRAME.0 as isize))
+                | WS_CHILD.0 as isize;
+            SetWindowLongPtrW(tauri_hwnd, GWL_STYLE, new_style);
+
+            // 4b: Set extended styles
+            let ex_style = GetWindowLongPtrW(tauri_hwnd, GWL_EXSTYLE);
+            SetWindowLongPtrW(
+                tauri_hwnd,
+                GWL_EXSTYLE,
+                ex_style | WS_EX_TOOLWINDOW.0 as isize | WS_EX_NOACTIVATE.0 as isize,
+            );
+
+            // 4c: Now SetParent
             match SetParent(tauri_hwnd, Some(worker_hwnd)) {
                 Ok(_) => {
                     println!("embed_in_desktop: successfully parented window into WorkerW");
-                    // Add WS_EX_TOOLWINDOW to prevent Show Desktop from minimizing
-                    let ex_style = GetWindowLongPtrW(tauri_hwnd, GWL_EXSTYLE);
-                    SetWindowLongPtrW(tauri_hwnd, GWL_EXSTYLE, ex_style | WS_EX_TOOLWINDOW.0 as isize);
+
+                    // 4d: Apply style changes with SWP_FRAMECHANGED
+                    let _ = SetWindowPos(
+                        tauri_hwnd,
+                        Some(HWND_TOP),
+                        0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                    println!("embed_in_desktop: styles applied with SWP_FRAMECHANGED");
                 }
                 Err(e) => {
                     eprintln!("embed_in_desktop: SetParent failed: {e}");
@@ -165,6 +190,7 @@ pub fn run() {
             google_calendar::fetch_events,
             google_calendar::create_event,
             google_calendar::delete_event,
+            google_calendar::update_event,
             move_window,
             get_window_position,
             save_local_events,

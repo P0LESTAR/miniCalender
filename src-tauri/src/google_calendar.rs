@@ -353,6 +353,11 @@ async fn api_request(
             .header("Content-Type", "application/json")
             .json(&body),
         "DELETE" => http.delete(url).bearer_auth(&token),
+        "PATCH" => http
+            .patch(url)
+            .bearer_auth(&token)
+            .header("Content-Type", "application/json")
+            .json(&body),
         _ => return Err(format!("Unsupported HTTP method: {}", method)),
     };
 
@@ -372,6 +377,11 @@ async fn api_request(
                 .header("Content-Type", "application/json")
                 .json(&body),
             "DELETE" => http.delete(url).bearer_auth(&new_token),
+            "PATCH" => http
+                .patch(url)
+                .bearer_auth(&new_token)
+                .header("Content-Type", "application/json")
+                .json(&body),
             _ => unreachable!(),
         };
         req2.send()
@@ -695,6 +705,68 @@ pub async fn delete_event(event_id: String) -> Result<(), String> {
             status, text
         ))
     }
+}
+
+/// Updates an event's dates by its Google Calendar event ID.
+#[tauri::command]
+pub async fn update_event(event_id: String, event: CreateEventRequest) -> Result<CalendarEvent, String> {
+    let url = format!(
+        "{}/calendars/primary/events/{}",
+        CALENDAR_API_BASE, event_id
+    );
+
+    let (start, end) = if event.is_all_day {
+        (
+            GoogleCreateDateTime {
+                date_time: None,
+                date: Some(event.start_time.clone()),
+                time_zone: None,
+            },
+            GoogleCreateDateTime {
+                date_time: None,
+                date: Some(event.end_time.clone()),
+                time_zone: None,
+            },
+        )
+    } else {
+        (
+            GoogleCreateDateTime {
+                date_time: Some(event.start_time.clone()),
+                date: None,
+                time_zone: None,
+            },
+            GoogleCreateDateTime {
+                date_time: Some(event.end_time.clone()),
+                date: None,
+                time_zone: None,
+            },
+        )
+    };
+
+    let body = GoogleCreateEvent {
+        summary: event.title,
+        description: event.description,
+        start,
+        end,
+    };
+
+    let json_body =
+        serde_json::to_value(&body).map_err(|e| format!("Failed to serialize event: {}", e))?;
+
+    let resp = api_request("PATCH", &url, Some(json_body)).await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Failed to update event ({}): {}", status, text));
+    }
+
+    let updated: GoogleEvent = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse updated event: {}", e))?;
+
+    Ok(google_event_to_calendar_event(updated))
 }
 
 // ---------------------------------------------------------------------------

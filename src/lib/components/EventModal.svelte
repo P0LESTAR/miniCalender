@@ -5,53 +5,154 @@
     mode: 'add' | 'delete';
     date: Date;
     event?: CalendarEvent;
-    onConfirm: (data?: { title: string; startTime: string; endTime: string }) => void;
+    onConfirm: (data?: { title: string; startTime: string; endTime: string; isAllDay: boolean; color: string }) => void;
     onCancel: () => void;
   }
 
   let { mode, date, event, onConfirm, onCancel }: Props = $props();
 
+  const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
   let title = $state('');
   let startTime = $state('09:00');
   let endTime = $state('10:00');
 
-  function formatDateDisplay(d: Date): string {
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1;
-    const day = d.getDate();
+  const COLOR_PALETTE = [
+    '#4FC3F7', // blue (default)
+    '#81C784', // green
+    '#FFB74D', // orange
+    '#E57373', // red
+    '#BA68C8', // purple
+    '#FFD54F', // yellow
+    '#4DB6AC', // teal
+    '#F06292', // pink
+    '#90A4AE', // gray
+  ];
+  let selectedColor = $state(COLOR_PALETTE[0]);
+
+  // Date range selection
+  let startDate = $state(new Date(date.getFullYear(), date.getMonth(), date.getDate()));
+  let endDate = $state(new Date(date.getFullYear(), date.getMonth(), date.getDate()));
+  let pickerOpen = $state(false);
+  let pickerMonth = $state(new Date(date.getFullYear(), date.getMonth(), 1));
+  let selectingEnd = $state(false);
+  let hoverDate = $state<Date | null>(null);
+
+  function isSameDay(a: Date, b: Date): boolean {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  let isMultiDay = $derived(!isSameDay(startDate, endDate));
+
+  // Preview range while hovering during end-date selection
+  let displayStart = $derived.by(() => {
+    if (selectingEnd && hoverDate && hoverDate < startDate) return hoverDate;
+    return startDate;
+  });
+
+  let displayEnd = $derived.by(() => {
+    if (selectingEnd && hoverDate) {
+      return hoverDate >= startDate ? hoverDate : startDate;
+    }
+    return endDate;
+  });
+
+  let pickerDays = $derived.by(() => {
+    const year = pickerMonth.getFullYear();
+    const month = pickerMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const dow = first.getDay();
+    const gridStart = new Date(year, month, 1 - dow);
+
+    const days: Array<{
+      date: Date;
+      currentMonth: boolean;
+      inRange: boolean;
+      isStart: boolean;
+      isEnd: boolean;
+    }> = [];
+
+    const s = displayStart;
+    const e = displayEnd;
+
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      days.push({
+        date: d,
+        currentMonth: d.getMonth() === month,
+        inRange: d >= s && d <= e,
+        isStart: isSameDay(d, s),
+        isEnd: isSameDay(d, e),
+      });
+    }
+    return days;
+  });
+
+  function handlePickerClick(d: Date) {
+    if (!selectingEnd) {
+      startDate = new Date(d);
+      endDate = new Date(d);
+      selectingEnd = true;
+    } else {
+      if (d < startDate) {
+        endDate = new Date(startDate);
+        startDate = new Date(d);
+      } else {
+        endDate = new Date(d);
+      }
+      selectingEnd = false;
+      hoverDate = null;
+    }
+  }
+
+  function formatDateShort(d: Date): string {
     const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-    const wd = weekdays[d.getDay()];
-    return `${year}년 ${month}월 ${day}일 (${wd})`;
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${weekdays[d.getDay()]})`;
+  }
+
+  function fmtDate(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   function handleSubmit() {
     if (mode === 'add') {
       if (!title.trim()) return;
-      const y = date.getFullYear();
-      const m = date.getMonth();
-      const d = date.getDate();
-      const [sh, sm] = startTime.split(':').map(Number);
-      const [eh, em] = endTime.split(':').map(Number);
-      onConfirm({
-        title: title.trim(),
-        startTime: new Date(y, m, d, sh, sm).toISOString(),
-        endTime: new Date(y, m, d, eh, em).toISOString(),
-      });
+
+      if (isMultiDay) {
+        // Multi-day → all-day event, exclusive end date (Google convention)
+        const endNext = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() + 1);
+        onConfirm({
+          title: title.trim(),
+          startTime: fmtDate(startDate),
+          endTime: fmtDate(endNext),
+          isAllDay: true,
+          color: selectedColor,
+        });
+      } else {
+        const y = startDate.getFullYear();
+        const m = startDate.getMonth();
+        const d = startDate.getDate();
+        const [sh, sm] = startTime.split(':').map(Number);
+        const [eh, em] = endTime.split(':').map(Number);
+        onConfirm({
+          title: title.trim(),
+          startTime: new Date(y, m, d, sh, sm).toISOString(),
+          endTime: new Date(y, m, d, eh, em).toISOString(),
+          isAllDay: false,
+          color: selectedColor,
+        });
+      }
     } else {
       onConfirm();
     }
   }
 
   function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
-      onCancel();
-    }
+    if (e.target === e.currentTarget) onCancel();
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      onCancel();
-    }
+    if (e.key === 'Escape') onCancel();
   }
 </script>
 
@@ -75,31 +176,98 @@
             required
           />
         </div>
+
+        <!-- Date Range -->
         <div class="form-group">
-          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="form-label">날짜</label>
-          <div class="form-date">{formatDateDisplay(date)}</div>
+          <!-- svelte-ignore a11y_consider_explicit_label -->
+          <button type="button" class="date-btn" onclick={() => pickerOpen = !pickerOpen}>
+            <span>
+              {#if isMultiDay}
+                {formatDateShort(startDate)} ~ {formatDateShort(endDate)}
+              {:else}
+                {formatDateShort(startDate)}
+              {/if}
+            </span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points={pickerOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"} />
+            </svg>
+          </button>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="start-time">시작 시간</label>
-            <input
-              id="start-time"
-              class="form-input"
-              type="time"
-              bind:value={startTime}
-            />
+
+        {#if pickerOpen}
+          <div class="picker">
+            <div class="picker-header">
+              <button type="button" class="picker-nav" onclick={() => pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1)}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <span class="picker-label">{pickerMonth.getFullYear()}년 {pickerMonth.getMonth() + 1}월</span>
+              <button type="button" class="picker-nav" onclick={() => pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1)}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18" /></svg>
+              </button>
+            </div>
+            <div class="picker-weekdays">
+              {#each WEEKDAYS as wd, i}
+                <span class="picker-wd" class:sunday={i === 0} class:saturday={i === 6}>{wd}</span>
+              {/each}
+            </div>
+            <div class="picker-grid">
+              {#each pickerDays as pd}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <button type="button"
+                  class="picker-day"
+                  class:other={!pd.currentMonth}
+                  class:in-range={pd.inRange && !pd.isStart && !pd.isEnd}
+                  class:range-start={pd.isStart}
+                  class:range-end={pd.isEnd}
+                  class:range-single={pd.isStart && pd.isEnd}
+                  onclick={() => handlePickerClick(pd.date)}
+                  onmouseenter={() => { if (selectingEnd) hoverDate = pd.date; }}
+                  onmouseleave={() => { if (selectingEnd) hoverDate = null; }}
+                >
+                  {pd.date.getDate()}
+                </button>
+              {/each}
+            </div>
+            {#if selectingEnd}
+              <p class="picker-hint">종료일을 선택하세요</p>
+            {/if}
           </div>
-          <div class="form-group">
-            <label class="form-label" for="end-time">종료 시간</label>
-            <input
-              id="end-time"
-              class="form-input"
-              type="time"
-              bind:value={endTime}
-            />
+        {/if}
+
+        <!-- Color picker -->
+        <div class="form-group">
+          <label class="form-label">색상</label>
+          <div class="color-palette">
+            {#each COLOR_PALETTE as color}
+              <button
+                type="button"
+                class="color-swatch"
+                class:selected={selectedColor === color}
+                style:background={color}
+                onclick={() => selectedColor = color}
+                aria-label="색상 선택"
+              ></button>
+            {/each}
           </div>
         </div>
+
+        <!-- Time inputs (only for single-day) -->
+        {#if !isMultiDay}
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="start-time">시작 시간</label>
+              <input id="start-time" class="form-input" type="time" bind:value={startTime} />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="end-time">종료 시간</label>
+              <input id="end-time" class="form-input" type="time" bind:value={endTime} />
+            </div>
+          </div>
+        {:else}
+          <p class="allday-note">여러 날 일정은 종일 일정으로 추가됩니다</p>
+        {/if}
+
         <div class="modal-actions">
           <button type="button" class="btn btn-cancel" onclick={onCancel}>취소</button>
           <button type="submit" class="btn btn-confirm">추가</button>
@@ -134,8 +302,10 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 24px;
-    width: 360px;
+    width: 380px;
     max-width: 90vw;
+    max-height: 85vh;
+    overflow-y: auto;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
   }
 
@@ -192,19 +362,181 @@
     opacity: 0.6;
   }
 
-  .form-date {
-    font-size: 13px;
-    color: var(--text-primary);
-    padding: 8px 10px;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
-
   .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
+  }
+
+  /* Date button */
+  .date-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-primary);
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    text-align: left;
+  }
+
+  .date-btn:hover {
+    border-color: var(--accent);
+  }
+
+  /* Mini Calendar Picker */
+  .picker {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .picker-nav {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: none;
+    border: none;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .picker-nav:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .picker-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .picker-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    margin-bottom: 2px;
+  }
+
+  .picker-wd {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    padding: 2px 0;
+  }
+
+  .picker-wd.sunday { color: #ef9a9a; }
+  .picker-wd.saturday { color: #90caf9; }
+
+  .picker-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0;
+  }
+
+  .picker-day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s;
+    border-radius: 0;
+  }
+
+  .picker-day:hover {
+    background: var(--bg-hover);
+  }
+
+  .picker-day.other {
+    color: var(--text-secondary);
+    opacity: 0.35;
+  }
+
+  .picker-day.in-range {
+    background: rgba(79, 195, 247, 0.12);
+  }
+
+  .picker-day.range-start {
+    background: var(--accent);
+    color: #0d1117;
+    font-weight: 600;
+    border-radius: 6px 0 0 6px;
+  }
+
+  .picker-day.range-end {
+    background: var(--accent);
+    color: #0d1117;
+    font-weight: 600;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .picker-day.range-single {
+    border-radius: 6px;
+  }
+
+  .picker-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--accent);
+    margin: 6px 0 0;
+  }
+
+  .color-palette {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s;
+    padding: 0;
+  }
+
+  .color-swatch:hover {
+    transform: scale(1.15);
+  }
+
+  .color-swatch.selected {
+    border-color: var(--text-primary);
+    transform: scale(1.15);
+  }
+
+  .allday-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 4px 0;
+    margin: 0;
   }
 
   .modal-actions {
