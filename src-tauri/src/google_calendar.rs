@@ -43,6 +43,7 @@ pub struct CreateEventRequest {
     pub start_time: String,
     pub end_time: String,
     pub is_all_day: bool,
+    pub color_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,8 @@ struct GoogleCreateEvent {
     description: Option<String>,
     start: GoogleCreateDateTime,
     end: GoogleCreateDateTime,
+    #[serde(rename = "colorId", skip_serializing_if = "Option::is_none")]
+    color_id: Option<String>,
 }
 
 #[derive(Serialize, Debug)]
@@ -396,6 +399,23 @@ async fn api_request(
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
+fn color_id_to_hex(color_id: &str) -> &str {
+    match color_id {
+        "1"  => "#7986CB", // Lavender
+        "2"  => "#33B679", // Sage
+        "3"  => "#8E24AA", // Grape
+        "4"  => "#E67C73", // Flamingo
+        "5"  => "#F6BF26", // Banana
+        "6"  => "#F4511E", // Tangerine
+        "7"  => "#039BE5", // Peacock
+        "8"  => "#616161", // Graphite
+        "9"  => "#3F51B5", // Blueberry
+        "10" => "#0B8043", // Basil
+        "11" => "#D50000", // Tomato
+        _    => "#039BE5", // default Peacock
+    }
+}
+
 fn google_event_to_calendar_event(ge: GoogleEvent) -> CalendarEvent {
     let (start_time, is_all_day) = match &ge.start {
         Some(dt) => {
@@ -419,13 +439,15 @@ fn google_event_to_calendar_event(ge: GoogleEvent) -> CalendarEvent {
         None => String::new(),
     };
 
+    let color = ge.color_id.as_deref().map(|id| color_id_to_hex(id).to_string());
+
     CalendarEvent {
         id: ge.id.unwrap_or_default(),
         title: ge.summary.unwrap_or_else(|| "(No title)".to_string()),
         description: ge.description,
         start_time,
         end_time,
-        color: ge.color_id,
+        color,
         is_all_day,
         source: "google".to_string(),
     }
@@ -660,6 +682,7 @@ pub async fn create_event(event: CreateEventRequest) -> Result<CalendarEvent, St
         description: event.description,
         start,
         end,
+        color_id: event.color_id,
     };
 
     let json_body =
@@ -748,6 +771,7 @@ pub async fn update_event(event_id: String, event: CreateEventRequest) -> Result
         description: event.description,
         start,
         end,
+        color_id: event.color_id,
     };
 
     let json_body =

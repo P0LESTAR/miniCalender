@@ -13,6 +13,26 @@ function toDateKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+/** Map hex color to Google Calendar colorId */
+const HEX_TO_COLOR_ID: Record<string, string> = {
+  '#039BE5': '7',  // Peacock
+  '#33B679': '2',  // Sage
+  '#F4511E': '6',  // Tangerine
+  '#D50000': '11', // Tomato
+  '#8E24AA': '3',  // Grape
+  '#F6BF26': '5',  // Banana
+  '#0B8043': '10', // Basil
+  '#E67C73': '4',  // Flamingo
+  '#616161': '8',  // Graphite
+  '#7986CB': '1',  // Lavender
+  '#3F51B5': '9',  // Blueberry
+};
+
+function hexToColorId(hex: string | undefined): string | null {
+  if (!hex) return null;
+  return HEX_TO_COLOR_ID[hex.toUpperCase()] ?? null;
+}
+
 /** Parse event time string to local midnight date */
 function toLocalDate(s: string): Date {
   if (s.length === 10) {
@@ -195,6 +215,7 @@ class CalendarStore {
             start_time: event.startTime,
             end_time: event.endTime,
             is_all_day: event.isAllDay,
+            color_id: hexToColorId(event.color),
           },
         });
         console.log('[calendar] create_event result:', created);
@@ -252,6 +273,7 @@ class CalendarStore {
             start_time: newStartTime,
             end_time: newEndTime,
             is_all_day: ev.isAllDay,
+            color_id: hexToColorId(ev.color),
           },
         });
       } catch (e) {

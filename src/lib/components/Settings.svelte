@@ -1,14 +1,14 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { PhysicalSize } from '@tauri-apps/api/dpi';
   import { invoke } from '@tauri-apps/api/core';
   import { calendarStore } from '../stores/calendar.svelte';
 
   interface Props {
     onClose: () => void;
+    onResizeMode: () => void;
   }
 
-  let { onClose }: Props = $props();
+  let { onClose, onResizeMode }: Props = $props();
 
   // Google Calendar connection status
   let googleConnected = $state(false);
@@ -17,14 +17,7 @@
   // Opacity
   let opacity = $state(100);
 
-  // Widget size presets
-  type SizePreset = 'small' | 'medium' | 'large';
-  let currentSize = $state<SizePreset>('medium');
-  const SIZE_MAP: Record<SizePreset, { width: number; height: number; label: string }> = {
-    small: { width: 800, height: 600, label: '작게' },
-    medium: { width: 1000, height: 720, label: '보통' },
-    large: { width: 1200, height: 850, label: '크게' },
-  };
+  // Widget size (free resize mode)
 
   // Autostart toggle
   // TODO: Actual autostart registration requires Tauri plugin (tauri-plugin-autostart)
@@ -106,14 +99,8 @@
     }
   }
 
-  async function handleSizeChange(preset: SizePreset) {
-    currentSize = preset;
-    const size = SIZE_MAP[preset];
-    try {
-      await getCurrentWindow().setSize(new PhysicalSize(size.width, size.height));
-    } catch {
-      // Size change not supported in current context
-    }
+  function handleResizeMode() {
+    onResizeMode();
   }
 
   function handleColorChange(color: string) {
@@ -216,17 +203,9 @@
       <section class="settings-section">
         <h3 class="section-title">위젯 크기</h3>
         <div class="section-content">
-          <div class="size-buttons">
-            {#each Object.entries(SIZE_MAP) as [key, size]}
-              <button
-                class="size-btn"
-                class:active={currentSize === key}
-                onclick={() => handleSizeChange(key as SizePreset)}
-              >
-                {size.label}
-              </button>
-            {/each}
-          </div>
+          <button class="settings-btn settings-btn--primary" onclick={handleResizeMode}>
+            크기 조절
+          </button>
         </div>
       </section>
 
@@ -472,38 +451,6 @@
     color: var(--text-secondary);
     min-width: 40px;
     text-align: right;
-  }
-
-  /* Size Buttons */
-  .size-buttons {
-    display: flex;
-    gap: 8px;
-  }
-
-  .size-btn {
-    flex: 1;
-    padding: 8px 0;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    font-family: inherit;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .size-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .size-btn.active {
-    background: var(--accent);
-    color: #0d1117;
-    border-color: var(--accent);
-    font-weight: 600;
   }
 
   /* Toggle Switch */

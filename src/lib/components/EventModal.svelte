@@ -18,15 +18,17 @@
   let endTime = $state('10:00');
 
   const COLOR_PALETTE = [
-    '#4FC3F7', // blue (default)
-    '#81C784', // green
-    '#FFB74D', // orange
-    '#E57373', // red
-    '#BA68C8', // purple
-    '#FFD54F', // yellow
-    '#4DB6AC', // teal
-    '#F06292', // pink
-    '#90A4AE', // gray
+    '#039BE5', // Peacock (blue, default)
+    '#33B679', // Sage (green)
+    '#F4511E', // Tangerine (orange)
+    '#D50000', // Tomato (red)
+    '#8E24AA', // Grape (purple)
+    '#F6BF26', // Banana (yellow)
+    '#0B8043', // Basil (teal)
+    '#E67C73', // Flamingo (pink)
+    '#616161', // Graphite (gray)
+    '#7986CB', // Lavender
+    '#3F51B5', // Blueberry
   ];
   let selectedColor = $state(COLOR_PALETTE[0]);
 
