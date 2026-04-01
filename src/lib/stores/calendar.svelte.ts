@@ -235,6 +235,44 @@ class CalendarStore {
     }
   }
 
+  async updateEvent(id: string, data: { title: string; startTime: string; endTime: string; isAllDay: boolean; color: string }) {
+    const idx = this.events.findIndex((e) => e.id === id);
+    if (idx === -1) return;
+
+    const ev = this.events[idx];
+    const updated: CalendarEvent = {
+      ...ev,
+      title: data.title,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      isAllDay: data.isAllDay,
+      color: data.color,
+    };
+
+    this.events[idx] = updated;
+
+    if (ev.source === 'google' && this.googleConnected) {
+      try {
+        await invoke('update_event', {
+          eventId: id,
+          event: {
+            title: data.title,
+            description: ev.description ?? null,
+            start_time: data.startTime,
+            end_time: data.endTime,
+            is_all_day: data.isAllDay,
+            color_id: hexToColorId(data.color),
+          },
+        });
+      } catch (e) {
+        console.error('Failed to update Google event:', e);
+      }
+    }
+
+    this.persistLocal();
+    this.persistColorMap();
+  }
+
   async removeEvent(id: string) {
     const event = this.events.find((e) => e.id === id);
     if (event && event.source === 'google' && this.googleConnected) {

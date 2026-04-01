@@ -2,20 +2,17 @@
   import type { CalendarEvent } from '../types';
 
   interface Props {
-    mode: 'add' | 'delete';
+    mode: 'add' | 'edit';
     date: Date;
     event?: CalendarEvent;
     onConfirm: (data?: { title: string; startTime: string; endTime: string; isAllDay: boolean; color: string }) => void;
+    onDelete?: () => void;
     onCancel: () => void;
   }
 
-  let { mode, date, event, onConfirm, onCancel }: Props = $props();
+  let { mode, date, event, onConfirm, onDelete, onCancel }: Props = $props();
 
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-
-  let title = $state('');
-  let startTime = $state('09:00');
-  let endTime = $state('10:00');
 
   const COLOR_PALETTE = [
     '#039BE5', // Peacock (blue, default)
@@ -30,21 +27,76 @@
     '#7986CB', // Lavender
     '#3F51B5', // Blueberry
   ];
-  let selectedColor = $state(COLOR_PALETTE[0]);
 
-  // Date range selection
-  let startDate = $state(new Date(date.getFullYear(), date.getMonth(), date.getDate()));
-  let endDate = $state(new Date(date.getFullYear(), date.getMonth(), date.getDate()));
+  // Compute initial values from event (edit mode) or defaults (add mode)
+  function initFromEvent() {
+    let _title = '';
+    let _color = COLOR_PALETTE[0];
+    let _isAllDay = false;
+    let _startTime = '09:00';
+    let _endTime = '10:00';
+    let _startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    let _endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    if (event && mode === 'edit') {
+      _title = event.title;
+      _color = event.color ?? COLOR_PALETTE[0];
+      _isAllDay = event.isAllDay;
+
+      if (event.startTime.length === 10) {
+        const [sy, sm, sd] = event.startTime.split('-').map(Number);
+        _startDate = new Date(sy, sm - 1, sd);
+      } else {
+        const s = new Date(event.startTime);
+        _startDate = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+        _startTime = `${String(s.getHours()).padStart(2, '0')}:${String(s.getMinutes()).padStart(2, '0')}`;
+      }
+
+      if (event.endTime.length === 10) {
+        const [ey, em, ed] = event.endTime.split('-').map(Number);
+        let end = new Date(ey, em - 1, ed);
+        if (event.isAllDay && end > _startDate) {
+          end = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1);
+        }
+        _endDate = end;
+      } else {
+        const e = new Date(event.endTime);
+        _endDate = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+        _endTime = `${String(e.getHours()).padStart(2, '0')}:${String(e.getMinutes()).padStart(2, '0')}`;
+      }
+    }
+
+    return { _title, _color, _isAllDay, _startTime, _endTime, _startDate, _endDate };
+  }
+
+  const init = initFromEvent();
+
+  let title = $state(init._title);
+  let selectedColor = $state(init._color);
+  let isAllDay = $state(init._isAllDay);
+  let startTime = $state(init._startTime);
+  let endTime = $state(init._endTime);
+
+  let startDate = $state(init._startDate);
+  let endDate = $state(init._endDate);
   let pickerOpen = $state(false);
-  let pickerMonth = $state(new Date(date.getFullYear(), date.getMonth(), 1));
+  let pickerMonth = $state(new Date(init._startDate.getFullYear(), init._startDate.getMonth(), 1));
   let selectingEnd = $state(false);
   let hoverDate = $state<Date | null>(null);
+  let confirmDelete = $state(false);
 
   function isSameDay(a: Date, b: Date): boolean {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
 
   let isMultiDay = $derived(!isSameDay(startDate, endDate));
+
+  // Auto-enable all-day when multi-day is selected
+  $effect(() => {
+    if (isMultiDay) {
+      isAllDay = true;
+    }
+  });
 
   // Preview range while hovering during end-date selection
   let displayStart = $derived.by(() => {
@@ -117,36 +169,39 @@
   }
 
   function handleSubmit() {
-    if (mode === 'add') {
-      if (!title.trim()) return;
+    if (!title.trim()) return;
 
-      if (isMultiDay) {
-        // Multi-day → all-day event, exclusive end date (Google convention)
-        const endNext = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() + 1);
-        onConfirm({
-          title: title.trim(),
-          startTime: fmtDate(startDate),
-          endTime: fmtDate(endNext),
-          isAllDay: true,
-          color: selectedColor,
-        });
-      } else {
-        const y = startDate.getFullYear();
-        const m = startDate.getMonth();
-        const d = startDate.getDate();
-        const [sh, sm] = startTime.split(':').map(Number);
-        const [eh, em] = endTime.split(':').map(Number);
-        onConfirm({
-          title: title.trim(),
-          startTime: new Date(y, m, d, sh, sm).toISOString(),
-          endTime: new Date(y, m, d, eh, em).toISOString(),
-          isAllDay: false,
-          color: selectedColor,
-        });
-      }
+    if (isMultiDay || isAllDay) {
+      const endNext = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() + 1);
+      onConfirm({
+        title: title.trim(),
+        startTime: fmtDate(startDate),
+        endTime: fmtDate(endNext),
+        isAllDay: true,
+        color: selectedColor,
+      });
     } else {
-      onConfirm();
+      const y = startDate.getFullYear();
+      const m = startDate.getMonth();
+      const d = startDate.getDate();
+      const [sh, sm] = startTime.split(':').map(Number);
+      const [eh, em] = endTime.split(':').map(Number);
+      onConfirm({
+        title: title.trim(),
+        startTime: new Date(y, m, d, sh, sm).toISOString(),
+        endTime: new Date(y, m, d, eh, em).toISOString(),
+        isAllDay: false,
+        color: selectedColor,
+      });
     }
+  }
+
+  function handleDelete() {
+    if (!confirmDelete) {
+      confirmDelete = true;
+      return;
+    }
+    onDelete?.();
   }
 
   function handleBackdropClick(e: MouseEvent) {
@@ -164,98 +219,106 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div class="modal-overlay" onclick={handleBackdropClick}>
   <div class="modal-card">
-    {#if mode === 'add'}
-      <h3 class="modal-title">새 일정 추가</h3>
-      <form class="modal-form" onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-        <div class="form-group">
-          <label class="form-label" for="event-title">제목</label>
-          <input
-            id="event-title"
-            class="form-input"
-            type="text"
-            bind:value={title}
-            placeholder="일정 제목을 입력하세요"
-            required
-          />
-        </div>
+    <h3 class="modal-title">{mode === 'add' ? '새 일정 추가' : '일정 편집'}</h3>
+    <form class="modal-form" onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+      <div class="form-group">
+        <label class="form-label" for="event-title">제목</label>
+        <input
+          id="event-title"
+          class="form-input"
+          type="text"
+          bind:value={title}
+          placeholder="일정 제목을 입력하세요"
+          required
+        />
+      </div>
 
-        <!-- Date Range -->
-        <div class="form-group">
-          <label class="form-label">날짜</label>
-          <!-- svelte-ignore a11y_consider_explicit_label -->
-          <button type="button" class="date-btn" onclick={() => pickerOpen = !pickerOpen}>
-            <span>
-              {#if isMultiDay}
-                {formatDateShort(startDate)} ~ {formatDateShort(endDate)}
-              {:else}
-                {formatDateShort(startDate)}
-              {/if}
-            </span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points={pickerOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"} />
-            </svg>
-          </button>
-        </div>
-
-        {#if pickerOpen}
-          <div class="picker">
-            <div class="picker-header">
-              <button type="button" class="picker-nav" onclick={() => pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1)}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6" /></svg>
-              </button>
-              <span class="picker-label">{pickerMonth.getFullYear()}년 {pickerMonth.getMonth() + 1}월</span>
-              <button type="button" class="picker-nav" onclick={() => pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1)}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18" /></svg>
-              </button>
-            </div>
-            <div class="picker-weekdays">
-              {#each WEEKDAYS as wd, i}
-                <span class="picker-wd" class:sunday={i === 0} class:saturday={i === 6}>{wd}</span>
-              {/each}
-            </div>
-            <div class="picker-grid">
-              {#each pickerDays as pd}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <button type="button"
-                  class="picker-day"
-                  class:other={!pd.currentMonth}
-                  class:in-range={pd.inRange && !pd.isStart && !pd.isEnd}
-                  class:range-start={pd.isStart}
-                  class:range-end={pd.isEnd}
-                  class:range-single={pd.isStart && pd.isEnd}
-                  onclick={() => handlePickerClick(pd.date)}
-                  onmouseenter={() => { if (selectingEnd) hoverDate = pd.date; }}
-                  onmouseleave={() => { if (selectingEnd) hoverDate = null; }}
-                >
-                  {pd.date.getDate()}
-                </button>
-              {/each}
-            </div>
-            {#if selectingEnd}
-              <p class="picker-hint">종료일을 선택하세요</p>
+      <!-- Date Range -->
+      <div class="form-group">
+        <label class="form-label">날짜</label>
+        <!-- svelte-ignore a11y_consider_explicit_label -->
+        <button type="button" class="date-btn" onclick={() => pickerOpen = !pickerOpen}>
+          <span>
+            {#if isMultiDay}
+              {formatDateShort(startDate)} ~ {formatDateShort(endDate)}
+            {:else}
+              {formatDateShort(startDate)}
             {/if}
-          </div>
-        {/if}
+          </span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points={pickerOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"} />
+          </svg>
+        </button>
+      </div>
 
-        <!-- Color picker -->
-        <div class="form-group">
-          <label class="form-label">색상</label>
-          <div class="color-palette">
-            {#each COLOR_PALETTE as color}
-              <button
-                type="button"
-                class="color-swatch"
-                class:selected={selectedColor === color}
-                style:background={color}
-                onclick={() => selectedColor = color}
-                aria-label="색상 선택"
-              ></button>
+      {#if pickerOpen}
+        <div class="picker">
+          <div class="picker-header">
+            <button type="button" class="picker-nav" onclick={() => pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1)}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <span class="picker-label">{pickerMonth.getFullYear()}년 {pickerMonth.getMonth() + 1}월</span>
+            <button type="button" class="picker-nav" onclick={() => pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1)}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18" /></svg>
+            </button>
+          </div>
+          <div class="picker-weekdays">
+            {#each WEEKDAYS as wd, i}
+              <span class="picker-wd" class:sunday={i === 0} class:saturday={i === 6}>{wd}</span>
             {/each}
           </div>
+          <div class="picker-grid">
+            {#each pickerDays as pd}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <button type="button"
+                class="picker-day"
+                class:other={!pd.currentMonth}
+                class:in-range={pd.inRange && !pd.isStart && !pd.isEnd}
+                class:range-start={pd.isStart}
+                class:range-end={pd.isEnd}
+                class:range-single={pd.isStart && pd.isEnd}
+                onclick={() => handlePickerClick(pd.date)}
+                onmouseenter={() => { if (selectingEnd) hoverDate = pd.date; }}
+                onmouseleave={() => { if (selectingEnd) hoverDate = null; }}
+              >
+                {pd.date.getDate()}
+              </button>
+            {/each}
+          </div>
+          {#if selectingEnd}
+            <p class="picker-hint">종료일을 선택하세요</p>
+          {/if}
         </div>
+      {/if}
 
-        <!-- Time inputs (only for single-day) -->
-        {#if !isMultiDay}
+      <!-- Color picker -->
+      <div class="form-group">
+        <label class="form-label">색상</label>
+        <div class="color-palette">
+          {#each COLOR_PALETTE as color}
+            <button
+              type="button"
+              class="color-swatch"
+              class:selected={selectedColor === color}
+              style:background={color}
+              onclick={() => selectedColor = color}
+              aria-label="색상 선택"
+            ></button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- All-day toggle + Time inputs -->
+      {#if isMultiDay}
+        <p class="allday-note">여러 날 일정은 종일 일정으로 추가됩니다</p>
+      {:else}
+        <div class="allday-row">
+          <span class="allday-label">종일</span>
+          <button type="button" class="toggle-switch" class:active={isAllDay} onclick={() => { isAllDay = !isAllDay; }}>
+            <div class="toggle-knob"></div>
+          </button>
+        </div>
+        {#if !isAllDay}
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="start-time">시작 시간</label>
@@ -266,23 +329,24 @@
               <input id="end-time" class="form-input" type="time" bind:value={endTime} />
             </div>
           </div>
-        {:else}
-          <p class="allday-note">여러 날 일정은 종일 일정으로 추가됩니다</p>
         {/if}
+      {/if}
 
-        <div class="modal-actions">
-          <button type="button" class="btn btn-cancel" onclick={onCancel}>취소</button>
-          <button type="submit" class="btn btn-confirm">추가</button>
-        </div>
-      </form>
-    {:else}
-      <h3 class="modal-title">일정 삭제</h3>
-      <p class="modal-message">'{event?.title}' 일정을 삭제하시겠습니까?</p>
       <div class="modal-actions">
+        {#if mode === 'edit'}
+          <button
+            type="button"
+            class="btn btn-danger"
+            onclick={handleDelete}
+          >
+            {confirmDelete ? '정말 삭제' : '삭제'}
+          </button>
+          <div class="actions-spacer"></div>
+        {/if}
         <button type="button" class="btn btn-cancel" onclick={onCancel}>취소</button>
-        <button type="button" class="btn btn-danger" onclick={handleSubmit}>삭제</button>
+        <button type="submit" class="btn btn-confirm">{mode === 'add' ? '추가' : '수정'}</button>
       </div>
-    {/if}
+    </form>
   </div>
 </div>
 
@@ -316,13 +380,6 @@
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 16px;
-  }
-
-  .modal-message {
-    font-size: 14px;
-    color: var(--text-primary);
-    margin-bottom: 20px;
-    line-height: 1.5;
   }
 
   .modal-form {
@@ -533,6 +590,53 @@
     transform: scale(1.15);
   }
 
+  /* All-day toggle */
+  .allday-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+
+  .allday-label {
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .toggle-switch {
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    position: relative;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .toggle-switch.active {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .toggle-switch.active .toggle-knob {
+    transform: translateX(18px);
+  }
+
   .allday-note {
     font-size: 12px;
     color: var(--text-secondary);
@@ -543,9 +647,13 @@
 
   .modal-actions {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
     gap: 8px;
     margin-top: 8px;
+  }
+
+  .actions-spacer {
+    flex: 1;
   }
 
   .btn {

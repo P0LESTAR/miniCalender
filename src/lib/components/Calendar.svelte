@@ -19,7 +19,7 @@
 
   // Modal state
   let modalOpen = $state(false);
-  let modalMode = $state<'add' | 'delete'>('add');
+  let modalMode = $state<'add' | 'edit'>('add');
   let modalDate = $state(new Date());
   let modalEvent = $state<CalendarEvent | undefined>(undefined);
 
@@ -188,7 +188,7 @@
     e.stopPropagation();
     const day = weekDays[startCol];
     calendarStore.selectDate(day.date);
-    modalMode = 'delete';
+    modalMode = 'edit';
     modalDate = day.date;
     modalEvent = event;
     modalOpen = true;
@@ -263,7 +263,14 @@
         color: data.color,
         source: calendarStore.googleConnected ? 'google' : 'local',
       });
-    } else if (modalMode === 'delete' && modalEvent) {
+    } else if (modalMode === 'edit' && modalEvent && data) {
+      calendarStore.updateEvent(modalEvent.id, data);
+    }
+    modalOpen = false;
+  }
+
+  function handleModalDelete() {
+    if (modalEvent) {
       calendarStore.removeEvent(modalEvent.id);
     }
     modalOpen = false;
@@ -393,6 +400,7 @@
     date={modalDate}
     event={modalEvent}
     onConfirm={handleModalConfirm}
+    onDelete={handleModalDelete}
     onCancel={handleModalCancel}
   />
 {/if}
