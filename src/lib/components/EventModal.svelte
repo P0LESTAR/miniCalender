@@ -83,7 +83,6 @@
   let pickerMonth = $state(new Date(init._startDate.getFullYear(), init._startDate.getMonth(), 1));
   let selectingEnd = $state(false);
   let hoverDate = $state<Date | null>(null);
-  let confirmDelete = $state(false);
 
   function isSameDay(a: Date, b: Date): boolean {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -197,10 +196,6 @@
   }
 
   function handleDelete() {
-    if (!confirmDelete) {
-      confirmDelete = true;
-      return;
-    }
     onDelete?.();
   }
 
@@ -339,7 +334,7 @@
             class="btn btn-danger"
             onclick={handleDelete}
           >
-            {confirmDelete ? '정말 삭제' : '삭제'}
+            삭제
           </button>
           <div class="actions-spacer"></div>
         {/if}
