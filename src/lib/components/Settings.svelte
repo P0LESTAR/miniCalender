@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke } from '@tauri-apps/api/core';
+  import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
   import { calendarStore } from '../stores/calendar.svelte';
 
   interface Props {
@@ -20,8 +22,8 @@
   // Widget size (free resize mode)
 
   // Autostart toggle
-  // TODO: Actual autostart registration requires Tauri plugin (tauri-plugin-autostart)
   let autostart = $state(false);
+  let autostartLoading = $state(false);
 
   // Theme colors
   const THEME_COLORS = [
@@ -43,9 +45,10 @@
     });
   });
 
-  // Check Google auth status on mount
-  $effect(() => {
+  // Initialize on mount (plain call, not $effect — avoids reactive re-runs)
+  onMount(() => {
     checkGoogleAuth();
+    loadAutostartStatus();
   });
 
   async function checkGoogleAuth() {
@@ -55,6 +58,31 @@
     } catch {
       // Command not available yet, leave as disconnected
       googleConnected = false;
+    }
+  }
+
+  async function loadAutostartStatus() {
+    try {
+      autostart = await isEnabled();
+    } catch {
+      autostart = false;
+    }
+  }
+
+  async function handleAutostartToggle() {
+    autostartLoading = true;
+    try {
+      if (autostart) {
+        await disable();
+        autostart = false;
+      } else {
+        await enable();
+        autostart = true;
+      }
+    } catch {
+      // ignore — state stays unchanged
+    } finally {
+      autostartLoading = false;
     }
   }
 
@@ -217,7 +245,7 @@
         <div class="section-content">
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="toggle-row" onclick={() => { autostart = !autostart; }}>
+          <div class="toggle-row" onclick={handleAutostartToggle} class:loading={autostartLoading}>
             <span class="toggle-label">Windows 시작 시 자동 실행</span>
             <div class="toggle-switch" class:active={autostart}>
               <div class="toggle-knob"></div>
@@ -460,6 +488,11 @@
     justify-content: space-between;
     cursor: pointer;
     padding: 4px 0;
+  }
+
+  .toggle-row.loading {
+    pointer-events: none;
+    opacity: 0.6;
   }
 
   .toggle-label {

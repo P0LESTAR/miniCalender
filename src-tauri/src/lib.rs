@@ -220,6 +220,10 @@ fn embed_in_desktop(window: &tauri::WebviewWindow) {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_shell::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
