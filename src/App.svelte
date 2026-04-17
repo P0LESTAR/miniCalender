@@ -18,8 +18,22 @@
   const MIN_W = 600;
   const MIN_H = 400;
 
-  onMount(() => {
+  const WINDOW_SIZE_KEY = 'window-size';
+
+  onMount(async () => {
     calendarStore.load();
+    const saved = localStorage.getItem(WINDOW_SIZE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const w = Math.max(MIN_W, parsed.w ?? MIN_W);
+        const h = Math.max(MIN_H, parsed.h ?? MIN_H);
+        const [x, y] = await invoke<[number, number, number, number]>('get_window_rect');
+        await invoke('set_window_rect', { x, y, w, h });
+      } catch {
+        // 저장된 크기 복원 실패 시 무시
+      }
+    }
   });
 
   function toggleSettings() {
@@ -35,8 +49,14 @@
     resizeMode = true;
   }
 
-  function exitResizeMode() {
+  async function exitResizeMode() {
     resizeMode = false;
+    try {
+      const [, , w, h] = await invoke<[number, number, number, number]>('get_window_rect');
+      localStorage.setItem(WINDOW_SIZE_KEY, JSON.stringify({ w, h }));
+    } catch {
+      // 크기 저장 실패 시 무시
+    }
   }
 
   async function handleResizeStart(e: MouseEvent, handle: string) {

@@ -86,7 +86,7 @@ src-tauri/src/                # Rust backend
 - Inline mini calendar for date range selection (click start → click end, with hover preview)
 - **All-day toggle**: Single-day events have a "종일" toggle switch. When ON, time inputs hidden and event saved as all-day. Multi-day selection auto-enables all-day.
 - 11-color palette matching Google Calendar official colors (Peacock blue default)
-- **Edit mode**: Double-click event bar → opens edit modal with current title/dates/time/color pre-filled. Bottom has "삭제" (left, requires double-click confirm) + "취소"/"수정" (right).
+- **Edit mode**: Double-click event bar → opens edit modal with current title/dates/time/color pre-filled. Bottom has "삭제" (left) + "취소"/"수정" (right).
 - **Initialization**: Event data parsed once via `initFromEvent()` function, NOT `$effect` — avoids reactive loop where reading `$state` inside `$effect` causes infinite resets.
 
 ## Svelte Conventions
