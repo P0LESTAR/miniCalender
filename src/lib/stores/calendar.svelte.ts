@@ -73,7 +73,6 @@ function fromRustEvent(e: any): CalendarEvent {
 }
 
 const today = new Date();
-let nextId = 100;
 
 // --- Reactive store using Svelte 5 runes ---
 class CalendarStore {
@@ -324,7 +323,7 @@ class CalendarStore {
   }
 
   generateEventId(): string {
-    return `evt-${Date.now()}-${nextId++}`;
+    return crypto.randomUUID();
   }
 
   /** Check Google auth status */
