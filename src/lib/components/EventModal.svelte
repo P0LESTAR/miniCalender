@@ -76,6 +76,8 @@
   let isAllDay = $state(init._isAllDay);
   let startTime = $state(init._startTime);
   let endTime = $state(init._endTime);
+  let startTimeInput = $state<HTMLInputElement>();
+  let endTimeInput = $state<HTMLInputElement>();
 
   let startDate = $state(init._startDate);
   let endDate = $state(init._endDate);
@@ -165,6 +167,25 @@
 
   function fmtDate(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function addMinutesToTime(time: string, minutes: number): string {
+    const [hours, mins] = time.split(':').map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(mins)) return time;
+
+    const totalMinutes = (hours * 60 + mins + minutes) % (24 * 60);
+    const nextHours = Math.floor(totalMinutes / 60);
+    const nextMins = totalMinutes % 60;
+    return `${String(nextHours).padStart(2, '0')}:${String(nextMins).padStart(2, '0')}`;
+  }
+
+  function handleStartTimeChange() {
+    endTime = addMinutesToTime(startTime, 30);
+  }
+
+  function openTimePicker(input: HTMLInputElement | undefined) {
+    input?.focus();
+    input?.showPicker?.();
   }
 
   function handleSubmit() {
@@ -317,11 +338,30 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" for="start-time">시작 시간</label>
-              <input id="start-time" class="form-input" type="time" bind:value={startTime} />
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="time-input-shell" onclick={() => openTimePicker(startTimeInput)}>
+                <input
+                  id="start-time"
+                  class="form-input time-input"
+                  type="time"
+                  bind:this={startTimeInput}
+                  bind:value={startTime}
+                  onchange={handleStartTimeChange}
+                />
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label" for="end-time">종료 시간</label>
-              <input id="end-time" class="form-input" type="time" bind:value={endTime} />
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="time-input-shell" onclick={() => openTimePicker(endTimeInput)}>
+                <input
+                  id="end-time"
+                  class="form-input time-input"
+                  type="time"
+                  bind:this={endTimeInput}
+                  bind:value={endTime}
+                />
+              </div>
             </div>
           </div>
         {/if}
@@ -409,6 +449,15 @@
 
   .form-input:focus {
     border-color: var(--accent);
+  }
+
+  .time-input-shell {
+    cursor: pointer;
+  }
+
+  .time-input {
+    width: 100%;
+    cursor: pointer;
   }
 
   .form-input::placeholder {
