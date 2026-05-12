@@ -7,3 +7,4 @@ src-tauri/target/
 .claude/
 .omc/
 src-tauri/.env
+mempalace.yaml

@@ -282,6 +282,7 @@ class CalendarStore {
       }
     }
     this.events = this.events.filter((e) => e.id !== id);
+    this.removeColorEntry(id);
     this.persistLocal();
   }
 
@@ -406,10 +407,25 @@ class CalendarStore {
     this.persistColorMap();
   }
 
+  /** Remove a single event's color entry from the persistent map */
+  private removeColorEntry(id: string) {
+    this.removeColorEntries([id]);
+  }
+
+  /** Remove multiple events' color entries from the persistent map */
+  removeColorEntries(ids: string[]) {
+    if (ids.length === 0) return;
+    try {
+      const colorMap = this.loadColorMap();
+      for (const id of ids) delete colorMap[id];
+      localStorage.setItem('event-colors', JSON.stringify(colorMap));
+    } catch {}
+  }
+
   /** Save user-selected colors for all events */
   private persistColorMap() {
     try {
-      const colorMap: Record<string, string> = {};
+      const colorMap = this.loadColorMap();
       for (const e of this.events) {
         if (e.color) colorMap[e.id] = e.color;
       }

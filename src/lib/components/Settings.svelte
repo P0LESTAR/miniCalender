@@ -109,6 +109,11 @@
     }
     googleConnected = false;
     calendarStore.googleConnected = false;
+    // Clean up color map entries for the google events being removed
+    const googleIds = calendarStore.events
+      .filter((e) => e.source === 'google')
+      .map((e) => e.id);
+    calendarStore.removeColorEntries(googleIds);
     // Remove google events from store, keep local only
     calendarStore.events = calendarStore.events.filter((e) => e.source === 'local');
     googleLoading = false;
